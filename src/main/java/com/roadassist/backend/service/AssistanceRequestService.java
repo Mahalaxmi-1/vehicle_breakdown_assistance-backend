@@ -53,8 +53,7 @@ public class AssistanceRequestService {
 
     /*
      * Compatibility constructor for existing tests or code that still passes
-     * AddressGeocodingService. Geocoding is intentionally not used when
-     * creating breakdown requests.
+     * AddressGeocodingService.
      */
     public AssistanceRequestService(
             AssistanceRequestRepository requestRepository,
@@ -93,7 +92,6 @@ public class AssistanceRequestService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Vehicle not found"));
 
-        // Preserve the location exactly as entered by the owner.
         AssistanceRequest request = requestRepository.saveAndFlush(
                 new AssistanceRequest(
                         owner,
@@ -160,18 +158,15 @@ public class AssistanceRequestService {
     }
 
     /*
-     * Show all unassigned REQUESTED breakdowns to active, AVAILABLE
-     * mechanics, irrespective of distance or specialization.
+     * Show all unassigned REQUESTED jobs to active mechanics.
+     * Mechanics can see remaining jobs even if their availability is BUSY.
+     * Accepting a job still requires AVAILABLE status.
      */
     @Transactional(readOnly = true)
     public List<MechanicRequestResponse> listAvailableForMechanics(
             String authenticatedEmail) {
 
-        User mechanic = findMechanic(authenticatedEmail);
-
-        if (mechanic.getAvailability() != User.Availability.AVAILABLE) {
-            return List.of();
-        }
+        findMechanic(authenticatedEmail);
 
         return requestRepository
                 .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
@@ -202,12 +197,10 @@ public class AssistanceRequestService {
         User mechanic = findMechanic(authenticatedEmail);
 
         long eligibleAvailable =
-                mechanic.getAvailability() == User.Availability.AVAILABLE
-                        ? requestRepository
-                                .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
-                                        AssistanceRequest.Status.REQUESTED)
-                                .size()
-                        : 0;
+                requestRepository
+                        .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
+                                AssistanceRequest.Status.REQUESTED)
+                        .size();
 
         long activeJobs =
                 requestRepository.countByAssignedMechanicIdAndStatusIn(
@@ -245,7 +238,7 @@ public class AssistanceRequestService {
         if (mechanic.getAvailability() != User.Availability.AVAILABLE) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Mechanic must be available to accept a request");
+                    "Mechanic must complete the current job before accepting another request");
         }
 
         AssistanceRequest candidate = requestRepository
@@ -260,7 +253,6 @@ public class AssistanceRequestService {
                     "Request is no longer available");
         }
 
-        // Atomically assign the request to one mechanic only.
         int claimed = requestRepository.claimIfAvailable(
                 requestId,
                 mechanic,
@@ -278,9 +270,6 @@ public class AssistanceRequestService {
                     "Request is no longer available");
         }
 
-        /*
-         * Reload the request after the bulk update.
-         */
         AssistanceRequest request = requestRepository
                 .findById(requestId)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -360,7 +349,7 @@ public class AssistanceRequestService {
         if (next == AssistanceRequest.Status.COMPLETED) {
             request.setCompletionNotes(notes.trim());
 
-            // Allow the mechanic to receive new requests after completing a job.
+            // Make the mechanic available for the next job.
             mechanic.setAvailability(User.Availability.AVAILABLE);
             userRepository.saveAndFlush(mechanic);
         }
