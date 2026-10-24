@@ -33,7 +33,6 @@ public class AssistanceRequestService {
     private final VehicleRepository vehicleRepository;
     private final ServiceCategoryRepository categoryRepository;
     private final MechanicMatchingService matchingService;
-    private final AddressGeocodingService geocodingService;
 
     public AssistanceRequestService(
             AssistanceRequestRepository requestRepository,
@@ -41,8 +40,7 @@ public class AssistanceRequestService {
             UserRepository userRepository,
             VehicleRepository vehicleRepository,
             ServiceCategoryRepository categoryRepository,
-            MechanicMatchingService matchingService,
-            AddressGeocodingService geocodingService) {
+            MechanicMatchingService matchingService) {
 
         this.requestRepository = requestRepository;
         this.historyRepository = historyRepository;
@@ -50,15 +48,12 @@ public class AssistanceRequestService {
         this.vehicleRepository = vehicleRepository;
         this.categoryRepository = categoryRepository;
         this.matchingService = matchingService;
-        this.geocodingService = geocodingService;
     }
 
     @Transactional
     public AssistanceRequestResponse create(
             String authenticatedEmail,
             AssistanceRequestCreateRequest input) {
-
-        var coordinates = geocodingService.resolve(input.getLocation());
 
         User owner = findOwner(authenticatedEmail);
 
@@ -69,19 +64,20 @@ public class AssistanceRequestService {
         }
 
         Vehicle vehicle = vehicleRepository
-            .findByIdAndOwnerIdAndActiveTrue(input.getVehicleId(), owner.getId())
+            .findByIdAndOwnerIdAndActiveTrue(
+                input.getVehicleId(), owner.getId())
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "Vehicle not found"));
 
+        // Save the entered address without sending it to a geocoding service.
+        // Coordinates are optional and remain null.
         AssistanceRequest request = requestRepository.saveAndFlush(
             new AssistanceRequest(
                 owner,
                 vehicle,
                 input.getProblemCategory(),
                 input.getDescription(),
-                input.getLocation(),
-                coordinates.latitude(),
-                coordinates.longitude()
+                input.getLocation()
             )
         );
 
@@ -138,16 +134,15 @@ public class AssistanceRequestService {
         return historyRepository
             .findAllByRequestOwnerIdAndToStatusOrderByChangedAtDesc(
                 owner.getId(),
-                AssistanceRequest.Status.COMPLETED
-            )
+                AssistanceRequest.Status.COMPLETED)
             .stream()
             .map(OwnerServiceHistoryResponse::from)
             .toList();
     }
 
     /**
-     * Return every open request to every active, available mechanic.
-     * Distance, coordinates and specialization do not filter this queue.
+     * Return every unassigned REQUESTED request to every active,
+     * available mechanic, regardless of distance or specialization.
      */
     @Transactional(readOnly = true)
     public List<MechanicRequestResponse> listAvailableForMechanics(
@@ -161,8 +156,7 @@ public class AssistanceRequestService {
 
         return requestRepository
             .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
-                AssistanceRequest.Status.REQUESTED
-            )
+                AssistanceRequest.Status.REQUESTED)
             .stream()
             .map(MechanicRequestResponse::from)
             .toList();
@@ -191,8 +185,7 @@ public class AssistanceRequestService {
             mechanic.getAvailability() == User.Availability.AVAILABLE
                 ? requestRepository
                     .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
-                        AssistanceRequest.Status.REQUESTED
-                    )
+                        AssistanceRequest.Status.REQUESTED)
                     .size()
                 : 0;
 
@@ -203,13 +196,10 @@ public class AssistanceRequestService {
                 List.of(
                     AssistanceRequest.Status.ACCEPTED,
                     AssistanceRequest.Status.ON_THE_WAY,
-                    AssistanceRequest.Status.IN_SERVICE
-                )
-            ),
+                    AssistanceRequest.Status.IN_SERVICE)),
             requestRepository.countByAssignedMechanicIdAndStatusIn(
                 mechanic.getId(),
-                List.of(AssistanceRequest.Status.COMPLETED)
-            )
+                List.of(AssistanceRequest.Status.COMPLETED))
         );
     }
 
@@ -228,8 +218,7 @@ public class AssistanceRequestService {
         if (mechanic.getAvailability() != User.Availability.AVAILABLE) {
             throw new ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "Mechanic must be available to accept a request"
-            );
+                "Mechanic must be available to accept a request");
         }
 
         AssistanceRequest candidate = requestRepository
@@ -243,13 +232,13 @@ public class AssistanceRequestService {
                 HttpStatus.CONFLICT, "Request is no longer available");
         }
 
-        // Atomic database claim prevents multiple mechanics accepting the same request.
+        // Atomic database claim prevents multiple mechanics accepting
+        // the same request.
         int claimed = requestRepository.claimIfAvailable(
             requestId,
             mechanic,
             AssistanceRequest.Status.REQUESTED,
-            AssistanceRequest.Status.ACCEPTED
-        );
+            AssistanceRequest.Status.ACCEPTED);
 
         if (claimed == 0) {
             if (!requestRepository.existsById(requestId)) {
@@ -271,8 +260,7 @@ public class AssistanceRequestService {
                 request,
                 AssistanceRequest.Status.REQUESTED,
                 AssistanceRequest.Status.ACCEPTED,
-                mechanic
-            )
+                mechanic)
         );
 
         mechanic.setAvailability(User.Availability.BUSY);
@@ -336,8 +324,7 @@ public class AssistanceRequestService {
         requestRepository.saveAndFlush(request);
 
         historyRepository.saveAndFlush(
-            new RequestStatusHistory(request, previous, next, mechanic)
-        );
+            new RequestStatusHistory(request, previous, next, mechanic));
 
         return MechanicRequestResponse.from(request);
     }
@@ -359,8 +346,7 @@ public class AssistanceRequestService {
         return AssistanceRequestResponse.from(
             request,
             matchStatus,
-            matchingService.ownerMatchMessage(request, matchStatus)
-        );
+            matchingService.ownerMatchMessage(request, matchStatus));
     }
 
     private User findMechanic(String email) {
