@@ -20,7 +20,6 @@ public class AddressGeocodingService {
     private static final int MAX_CACHE_ENTRIES = 1000;
     private static final long SUCCESS_TTL_MS = Duration.ofDays(1).toMillis();
     private static final long NOT_FOUND_TTL_MS = Duration.ofMinutes(5).toMillis();
-
     private final GeocodingProvider provider;
     private final Map<String, CacheEntry> cache = new LinkedHashMap<>(128, 0.75f, true) {
         private static final long serialVersionUID = 1L;

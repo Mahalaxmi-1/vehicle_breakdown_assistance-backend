@@ -43,6 +43,7 @@ public class AssistanceRequestService {
             VehicleRepository vehicleRepository,
             ServiceCategoryRepository categoryRepository,
             MechanicMatchingService matchingService) {
+
         this.requestRepository = requestRepository;
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
@@ -53,7 +54,7 @@ public class AssistanceRequestService {
 
     /*
      * Compatibility constructor for existing tests or code that still passes
-     * AddressGeocodingService. The service is intentionally not used when
+     * AddressGeocodingService. Geocoding is intentionally not used when
      * creating breakdown requests.
      */
     public AssistanceRequestService(
@@ -64,14 +65,14 @@ public class AssistanceRequestService {
             ServiceCategoryRepository categoryRepository,
             MechanicMatchingService matchingService,
             AddressGeocodingService ignoredGeocodingService) {
+
         this(
-            requestRepository,
-            historyRepository,
-            userRepository,
-            vehicleRepository,
-            categoryRepository,
-            matchingService
-        );
+                requestRepository,
+                historyRepository,
+                userRepository,
+                vehicleRepository,
+                categoryRepository,
+                matchingService);
     }
 
     @Transactional
@@ -84,35 +85,30 @@ public class AssistanceRequestService {
         if (!categoryRepository.existsByNameIgnoreCaseAndActiveTrue(
                 input.getProblemCategory())) {
             throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST, "Invalid problem category");
+                    HttpStatus.BAD_REQUEST, "Invalid problem category");
         }
 
         Vehicle vehicle = vehicleRepository
-            .findByIdAndOwnerIdAndActiveTrue(
-                input.getVehicleId(), owner.getId())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Vehicle not found"));
+                .findByIdAndOwnerIdAndActiveTrue(
+                        input.getVehicleId(), owner.getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Vehicle not found"));
 
-        // Save the address as entered. Geocoding is not required.
-        // Latitude and longitude remain null when not supplied.
+        // Preserve the location exactly as entered by the owner.
         AssistanceRequest request = requestRepository.saveAndFlush(
-            new AssistanceRequest(
-                owner,
-                vehicle,
-                input.getProblemCategory(),
-                input.getDescription(),
-                input.getLocation()
-            )
-        );
+                new AssistanceRequest(
+                        owner,
+                        vehicle,
+                        input.getProblemCategory(),
+                        input.getDescription(),
+                        input.getLocation()));
 
         historyRepository.saveAndFlush(
-            new RequestStatusHistory(
-                request,
-                null,
-                AssistanceRequest.Status.REQUESTED,
-                owner
-            )
-        );
+                new RequestStatusHistory(
+                        request,
+                        null,
+                        AssistanceRequest.Status.REQUESTED,
+                        owner));
 
         return ownerResponse(request);
     }
@@ -124,10 +120,10 @@ public class AssistanceRequestService {
         User owner = findOwner(authenticatedEmail);
 
         return requestRepository
-            .findAllByOwnerIdOrderByRequestedAtDesc(owner.getId())
-            .stream()
-            .map(this::ownerResponse)
-            .toList();
+                .findAllByOwnerIdOrderByRequestedAtDesc(owner.getId())
+                .stream()
+                .map(this::ownerResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -138,15 +134,15 @@ public class AssistanceRequestService {
         User owner = findOwner(authenticatedEmail);
 
         AssistanceRequest request = requestRepository
-            .findByIdAndOwnerId(requestId, owner.getId())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Request not found"));
+                .findByIdAndOwnerId(requestId, owner.getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Request not found"));
 
         return historyRepository
-            .findAllByRequestIdOrderByChangedAtAsc(request.getId())
-            .stream()
-            .map(RequestStatusHistoryResponse::from)
-            .toList();
+                .findAllByRequestIdOrderByChangedAtAsc(request.getId())
+                .stream()
+                .map(RequestStatusHistoryResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -156,17 +152,17 @@ public class AssistanceRequestService {
         User owner = findOwner(authenticatedEmail);
 
         return historyRepository
-            .findAllByRequestOwnerIdAndToStatusOrderByChangedAtDesc(
-                owner.getId(),
-                AssistanceRequest.Status.COMPLETED)
-            .stream()
-            .map(OwnerServiceHistoryResponse::from)
-            .toList();
+                .findAllByRequestOwnerIdAndToStatusOrderByChangedAtDesc(
+                        owner.getId(),
+                        AssistanceRequest.Status.COMPLETED)
+                .stream()
+                .map(OwnerServiceHistoryResponse::from)
+                .toList();
     }
 
     /*
-     * Show every unassigned REQUESTED breakdown to every active,
-     * AVAILABLE mechanic, regardless of distance or specialization.
+     * Show all unassigned REQUESTED breakdowns to active, AVAILABLE
+     * mechanics, irrespective of distance or specialization.
      */
     @Transactional(readOnly = true)
     public List<MechanicRequestResponse> listAvailableForMechanics(
@@ -179,11 +175,11 @@ public class AssistanceRequestService {
         }
 
         return requestRepository
-            .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
-                AssistanceRequest.Status.REQUESTED)
-            .stream()
-            .map(MechanicRequestResponse::from)
-            .toList();
+                .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
+                        AssistanceRequest.Status.REQUESTED)
+                .stream()
+                .map(MechanicRequestResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -193,10 +189,11 @@ public class AssistanceRequestService {
         User mechanic = findMechanic(authenticatedEmail);
 
         return requestRepository
-            .findAllByAssignedMechanicIdOrderByRequestedAtDesc(mechanic.getId())
-            .stream()
-            .map(MechanicRequestResponse::from)
-            .toList();
+                .findAllByAssignedMechanicIdOrderByRequestedAtDesc(
+                        mechanic.getId())
+                .stream()
+                .map(MechanicRequestResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -206,25 +203,30 @@ public class AssistanceRequestService {
         User mechanic = findMechanic(authenticatedEmail);
 
         long eligibleAvailable =
-            mechanic.getAvailability() == User.Availability.AVAILABLE
-                ? requestRepository
-                    .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
-                        AssistanceRequest.Status.REQUESTED)
-                    .size()
-                : 0;
+                mechanic.getAvailability() == User.Availability.AVAILABLE
+                        ? requestRepository
+                                .findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
+                                        AssistanceRequest.Status.REQUESTED)
+                                .size()
+                        : 0;
+
+        long activeJobs =
+                requestRepository.countByAssignedMechanicIdAndStatusIn(
+                        mechanic.getId(),
+                        List.of(
+                                AssistanceRequest.Status.ACCEPTED,
+                                AssistanceRequest.Status.ON_THE_WAY,
+                                AssistanceRequest.Status.IN_SERVICE));
+
+        long completedJobs =
+                requestRepository.countByAssignedMechanicIdAndStatusIn(
+                        mechanic.getId(),
+                        List.of(AssistanceRequest.Status.COMPLETED));
 
         return new MechanicRequestStatsResponse(
-            eligibleAvailable,
-            requestRepository.countByAssignedMechanicIdAndStatusIn(
-                mechanic.getId(),
-                List.of(
-                    AssistanceRequest.Status.ACCEPTED,
-                    AssistanceRequest.Status.ON_THE_WAY,
-                    AssistanceRequest.Status.IN_SERVICE)),
-            requestRepository.countByAssignedMechanicIdAndStatusIn(
-                mechanic.getId(),
-                List.of(AssistanceRequest.Status.COMPLETED))
-        );
+                eligibleAvailable,
+                activeJobs,
+                completedJobs);
     }
 
     @Transactional
@@ -233,59 +235,73 @@ public class AssistanceRequestService {
             String authenticatedEmail) {
 
         User mechanic = userRepository
-            .findByEmailIgnoreCaseForUpdate(authenticatedEmail)
-            .filter(user ->
-                user.getRole() == User.Role.MECHANIC && user.isActive())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.FORBIDDEN, "Active mechanic account required"));
+                .findByEmailIgnoreCaseForUpdate(authenticatedEmail)
+                .filter(user ->
+                        user.getRole() == User.Role.MECHANIC
+                                && user.isActive())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Active mechanic account required"));
 
         if (mechanic.getAvailability() != User.Availability.AVAILABLE) {
             throw new ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Mechanic must be available to accept a request");
+                    HttpStatus.CONFLICT,
+                    "Mechanic must be available to accept a request");
         }
 
         AssistanceRequest candidate = requestRepository
-            .findByIdForUpdate(requestId)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Request not found"));
+                .findByIdForUpdate(requestId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Request not found"));
 
         if (candidate.getStatus() != AssistanceRequest.Status.REQUESTED
                 || candidate.getAssignedMechanic() != null) {
             throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Request is no longer available");
+                    HttpStatus.CONFLICT,
+                    "Request is no longer available");
         }
 
-        // Atomically claim the request so only one mechanic can accept it.
+        // Atomically assign the request to one mechanic only.
         int claimed = requestRepository.claimIfAvailable(
-            requestId,
-            mechanic,
-            AssistanceRequest.Status.REQUESTED,
-            AssistanceRequest.Status.ACCEPTED);
+                requestId,
+                mechanic,
+                AssistanceRequest.Status.REQUESTED,
+                AssistanceRequest.Status.ACCEPTED);
 
         if (claimed == 0) {
             if (!requestRepository.existsById(requestId)) {
                 throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Request not found");
+                        HttpStatus.NOT_FOUND, "Request not found");
             }
 
             throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Request is no longer available");
+                    HttpStatus.CONFLICT,
+                    "Request is no longer available");
         }
 
+        /*
+         * Reload the request after the bulk update. The repository's
+         * modifying query clears the persistence context, so do not rely
+         * on the previously loaded candidate entity for the new status.
+         */
         AssistanceRequest request = requestRepository
-            .findById(requestId)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Request not found"));
+                .findById(requestId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Request not found"));
+
+        if (request.getStatus() != AssistanceRequest.Status.ACCEPTED
+                || request.getAssignedMechanic() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Request assignment could not be confirmed");
+        }
 
         historyRepository.saveAndFlush(
-            new RequestStatusHistory(
-                request,
-                AssistanceRequest.Status.REQUESTED,
-                AssistanceRequest.Status.ACCEPTED,
-                mechanic
-            )
-        );
+                new RequestStatusHistory(
+                        request,
+                        AssistanceRequest.Status.REQUESTED,
+                        AssistanceRequest.Status.ACCEPTED,
+                        mechanic));
 
         mechanic.setAvailability(User.Availability.BUSY);
         userRepository.saveAndFlush(mechanic);
@@ -301,22 +317,24 @@ public class AssistanceRequestService {
             String notes) {
 
         User mechanic = userRepository
-            .findByEmailIgnoreCaseForUpdate(authenticatedEmail)
-            .filter(user ->
-                user.getRole() == User.Role.MECHANIC && user.isActive())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.FORBIDDEN, "Active mechanic account required"));
+                .findByEmailIgnoreCaseForUpdate(authenticatedEmail)
+                .filter(user ->
+                        user.getRole() == User.Role.MECHANIC
+                                && user.isActive())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Active mechanic account required"));
 
         AssistanceRequest request = requestRepository
-            .findByIdForUpdate(requestId)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Request not found"));
+                .findByIdForUpdate(requestId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Request not found"));
 
         if (request.getAssignedMechanic() == null
                 || !request.getAssignedMechanic().getId()
-                    .equals(mechanic.getId())) {
+                        .equals(mechanic.getId())) {
             throw new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Request not found");
+                    HttpStatus.NOT_FOUND, "Request not found");
         }
 
         AssistanceRequest.Status next = switch (request.getStatus()) {
@@ -328,14 +346,15 @@ public class AssistanceRequestService {
 
         if (next == null || next != requestedStatus) {
             throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Invalid status transition");
+                    HttpStatus.CONFLICT,
+                    "Invalid status transition");
         }
 
         if (next == AssistanceRequest.Status.COMPLETED
                 && (notes == null || notes.isBlank())) {
             throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Service details are required to complete a request");
+                    HttpStatus.BAD_REQUEST,
+                    "Service details are required to complete a request");
         }
 
         AssistanceRequest.Status previous = request.getStatus();
@@ -348,18 +367,10 @@ public class AssistanceRequestService {
         requestRepository.saveAndFlush(request);
 
         historyRepository.saveAndFlush(
-            new RequestStatusHistory(request, previous, next, mechanic));
+                new RequestStatusHistory(
+                        request, previous, next, mechanic));
 
         return MechanicRequestResponse.from(request);
-    }
-
-    private User findOwner(String email) {
-        return userRepository
-            .findByEmailIgnoreCase(email)
-            .filter(user ->
-                user.getRole() == User.Role.OWNER && user.isActive())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.FORBIDDEN, "Owner account required"));
     }
 
     private AssistanceRequestResponse ownerResponse(
@@ -367,18 +378,29 @@ public class AssistanceRequestService {
 
         String matchStatus = matchingService.ownerMatchStatus(request);
 
+        String matchMessage = matchingService.ownerMatchMessage(
+                request, matchStatus);
+
         return AssistanceRequestResponse.from(
-            request,
-            matchStatus,
-            matchingService.ownerMatchMessage(request, matchStatus));
+                request, matchStatus, matchMessage);
+    }
+
+    private User findOwner(String email) {
+        return userRepository
+                .findByEmailIgnoreCase(email)
+                .filter(user ->
+                        user.getRole() == User.Role.OWNER && user.isActive())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Owner account required"));
     }
 
     private User findMechanic(String email) {
         return userRepository
-            .findByEmailIgnoreCase(email)
-            .filter(user ->
-                user.getRole() == User.Role.MECHANIC && user.isActive())
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.FORBIDDEN, "Active mechanic account required"));
+                .findByEmailIgnoreCase(email)
+                .filter(user ->
+                        user.getRole() == User.Role.MECHANIC && user.isActive())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Active mechanic account required"));
     }
 }

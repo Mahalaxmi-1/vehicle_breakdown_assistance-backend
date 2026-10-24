@@ -1,45 +1,70 @@
+
 package com.roadassist.backend.repository;
 
-import java.util.List;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.Modifying;
+
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.roadassist.backend.model.AssistanceRequest;
+import com.roadassist.backend.model.User;
 
-public interface AssistanceRequestRepository extends JpaRepository<AssistanceRequest, Long> {
+public interface AssistanceRequestRepository
+        extends JpaRepository<AssistanceRequest, Long> {
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select r from AssistanceRequest r where r.id = :requestId")
-    Optional<AssistanceRequest> findByIdForUpdate(@Param("requestId") Long requestId);
+    @Query("SELECT r FROM AssistanceRequest r WHERE r.id = :requestId")
+    Optional<AssistanceRequest> findByIdForUpdate(
+            @Param("requestId") Long requestId);
 
-    Optional<AssistanceRequest> findByIdAndOwnerId(Long id, Long ownerId);
+    Optional<AssistanceRequest> findByIdAndOwnerId(
+            Long id, Long ownerId);
 
     List<AssistanceRequest> findAllByOwnerIdAndStatusOrderByRequestedAtDesc(
             Long ownerId, AssistanceRequest.Status status);
-    List<AssistanceRequest> findAllByOwnerIdOrderByRequestedAtDesc(Long ownerId);
+
+    List<AssistanceRequest> findAllByOwnerIdOrderByRequestedAtDesc(
+            Long ownerId);
 
     List<AssistanceRequest> findAllByStatusAndAssignedMechanicIsNullOrderByRequestedAtAsc(
             AssistanceRequest.Status status);
 
-    List<AssistanceRequest> findAllByAssignedMechanicIdOrderByRequestedAtDesc(Long mechanicId);
+    List<AssistanceRequest> findAllByAssignedMechanicIdOrderByRequestedAtDesc(
+            Long mechanicId);
 
-    long countByStatusAndAssignedMechanicIsNull(AssistanceRequest.Status status);
+    long countByStatusAndAssignedMechanicIsNull(
+            AssistanceRequest.Status status);
 
-    long countByAssignedMechanicIdAndStatusIn(Long mechanicId,
+    long countByAssignedMechanicIdAndStatusIn(
+            Long mechanicId,
             Collection<AssistanceRequest.Status> statuses);
+
     long countByStatus(AssistanceRequest.Status status);
 
+    /*
+     * Atomically assign a requested breakdown to one mechanic.
+     * The conditional update prevents two mechanics from accepting
+     * the same request.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update AssistanceRequest r set r.assignedMechanic = :mechanic, r.status = :accepted "
-            + "where r.id = :requestId and r.status = :requested and r.assignedMechanic is null")
-    int claimIfAvailable(@Param("requestId") Long requestId,
-            @Param("mechanic") com.roadassist.backend.model.User mechanic,
+    @Query("""
+            UPDATE AssistanceRequest r
+            SET r.assignedMechanic = :mechanic,
+                r.status = :accepted
+            WHERE r.id = :requestId
+              AND r.status = :requested
+              AND r.assignedMechanic IS NULL
+            """)
+    int claimIfAvailable(
+            @Param("requestId") Long requestId,
+            @Param("mechanic") User mechanic,
             @Param("requested") AssistanceRequest.Status requested,
             @Param("accepted") AssistanceRequest.Status accepted);
 }
