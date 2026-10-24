@@ -1,4 +1,3 @@
-
 package com.roadassist.backend.service;
 
 import java.util.List;
@@ -120,7 +119,7 @@ public class AssistanceRequestService {
         User owner = findOwner(authenticatedEmail);
 
         return requestRepository
-                .findAllByOwnerIdOrderByRequestedAtDesc(owner.getId())
+                .findAllVisibleToOwner(owner.getId())
                 .stream()
                 .map(this::ownerResponse)
                 .toList();
@@ -280,9 +279,7 @@ public class AssistanceRequestService {
         }
 
         /*
-         * Reload the request after the bulk update. The repository's
-         * modifying query clears the persistence context, so do not rely
-         * on the previously loaded candidate entity for the new status.
+         * Reload the request after the bulk update.
          */
         AssistanceRequest request = requestRepository
                 .findById(requestId)

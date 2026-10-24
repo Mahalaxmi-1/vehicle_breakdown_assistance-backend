@@ -67,4 +67,12 @@ public interface AssistanceRequestRepository
             @Param("mechanic") User mechanic,
             @Param("requested") AssistanceRequest.Status requested,
             @Param("accepted") AssistanceRequest.Status accepted);
+      @Query("""
+          SELECT r FROM AssistanceRequest r
+          WHERE r.owner.id = :ownerId
+          OR r.vehicle.owner.id = :ownerId
+          ORDER BY r.requestedAt DESC
+      """)
+     List<AssistanceRequest> findAllVisibleToOwner(
+        @Param("ownerId") Long ownerId);
 }
