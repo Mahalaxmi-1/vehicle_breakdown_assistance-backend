@@ -4,9 +4,9 @@ package com.roadassist.backend.config;
 import java.net.URI;
 import java.util.Arrays;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -19,20 +19,25 @@ public class CorsConfig {
     public WebMvcConfigurer corsConfigurer(
             @Value("${ROADASSIST_FRONTEND_ORIGIN:http://localhost:5173}") String frontendOrigin,
             Environment environment) {
+
         String[] allowedOrigins = Arrays.stream(frontendOrigin.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .map(origin -> origin.replaceAll("/+$", ""))
                 .toArray(String[]::new);
 
-        if (allowedOrigins.length == 0 || Arrays.stream(allowedOrigins)
-                .anyMatch(origin -> origin.equals("*") || origin.equalsIgnoreCase("null"))) {
-            throw new IllegalStateException("CORS requires explicit frontend origins; wildcard and null origins are not allowed.");
+        if (allowedOrigins.length == 0
+                || Arrays.stream(allowedOrigins).anyMatch(
+                        origin -> origin.equals("*")
+                                || origin.equalsIgnoreCase("null"))) {
+            throw new IllegalStateException(
+                "CORS requires explicit frontend origins; wildcard and null origins are not allowed.");
         }
+
         if (environment.acceptsProfiles(Profiles.of("production"))) {
-            if (allowedOrigins.length != 1 || !isHttpsOrigin(allowedOrigins[0])) {
+            if (Arrays.stream(allowedOrigins).anyMatch(origin -> !isHttpsOrigin(origin))) {
                 throw new IllegalStateException(
-                    "Production CORS requires exactly one HTTPS frontend origin without a path.");
+                        "Production CORS requires HTTPS frontend origins without paths.");
             }
         }
 
