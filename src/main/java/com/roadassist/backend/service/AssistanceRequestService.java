@@ -359,6 +359,10 @@ public class AssistanceRequestService {
 
         if (next == AssistanceRequest.Status.COMPLETED) {
             request.setCompletionNotes(notes.trim());
+
+            // Allow the mechanic to receive new requests after completing a job.
+            mechanic.setAvailability(User.Availability.AVAILABLE);
+            userRepository.saveAndFlush(mechanic);
         }
 
         requestRepository.saveAndFlush(request);
