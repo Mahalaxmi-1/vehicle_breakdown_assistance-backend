@@ -3,6 +3,7 @@ package com.roadassist.backend.service;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ public class AssistanceRequestService {
     private final ServiceCategoryRepository categoryRepository;
     private final MechanicMatchingService matchingService;
 
+    @Autowired
     public AssistanceRequestService(
             AssistanceRequestRepository requestRepository,
             RequestStatusHistoryRepository historyRepository,
@@ -41,13 +43,35 @@ public class AssistanceRequestService {
             VehicleRepository vehicleRepository,
             ServiceCategoryRepository categoryRepository,
             MechanicMatchingService matchingService) {
-
         this.requestRepository = requestRepository;
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
         this.vehicleRepository = vehicleRepository;
         this.categoryRepository = categoryRepository;
         this.matchingService = matchingService;
+    }
+
+    /*
+     * Compatibility constructor for existing tests or code that still passes
+     * AddressGeocodingService. The service is intentionally not used when
+     * creating breakdown requests.
+     */
+    public AssistanceRequestService(
+            AssistanceRequestRepository requestRepository,
+            RequestStatusHistoryRepository historyRepository,
+            UserRepository userRepository,
+            VehicleRepository vehicleRepository,
+            ServiceCategoryRepository categoryRepository,
+            MechanicMatchingService matchingService,
+            AddressGeocodingService ignoredGeocodingService) {
+        this(
+            requestRepository,
+            historyRepository,
+            userRepository,
+            vehicleRepository,
+            categoryRepository,
+            matchingService
+        );
     }
 
     @Transactional
@@ -69,8 +93,8 @@ public class AssistanceRequestService {
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "Vehicle not found"));
 
-        // Save the entered address without sending it to a geocoding service.
-        // Coordinates are optional and remain null.
+        // Save the address as entered. Geocoding is not required.
+        // Latitude and longitude remain null when not supplied.
         AssistanceRequest request = requestRepository.saveAndFlush(
             new AssistanceRequest(
                 owner,
@@ -140,9 +164,9 @@ public class AssistanceRequestService {
             .toList();
     }
 
-    /**
-     * Return every unassigned REQUESTED request to every active,
-     * available mechanic, regardless of distance or specialization.
+    /*
+     * Show every unassigned REQUESTED breakdown to every active,
+     * AVAILABLE mechanic, regardless of distance or specialization.
      */
     @Transactional(readOnly = true)
     public List<MechanicRequestResponse> listAvailableForMechanics(
@@ -232,8 +256,7 @@ public class AssistanceRequestService {
                 HttpStatus.CONFLICT, "Request is no longer available");
         }
 
-        // Atomic database claim prevents multiple mechanics accepting
-        // the same request.
+        // Atomically claim the request so only one mechanic can accept it.
         int claimed = requestRepository.claimIfAvailable(
             requestId,
             mechanic,
@@ -260,7 +283,8 @@ public class AssistanceRequestService {
                 request,
                 AssistanceRequest.Status.REQUESTED,
                 AssistanceRequest.Status.ACCEPTED,
-                mechanic)
+                mechanic
+            )
         );
 
         mechanic.setAvailability(User.Availability.BUSY);
